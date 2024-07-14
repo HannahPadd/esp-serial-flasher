@@ -29,7 +29,7 @@
 
 #define WORD_ALIGNED(ptr) ((size_t)ptr % sizeof(size_t) == 0)
 
-#ifdef SERIAL_FLASHER_DEBUG_TRACE
+#if SERIAL_FLASHER_DEBUG_TRACE
 static void dec_to_hex_str(const uint8_t dec, uint8_t hex_str[3])
 {
     static const uint8_t dec_to_hex[] = {
@@ -146,15 +146,9 @@ esp_loader_error_t loader_port_write(const uint8_t *data, const uint16_t size, c
 {
     (void) timeout;
 
-    /* Due to the fact that the SPI driver uses DMA for larger transfers,
-       and the DMA requirements, the buffer must be word aligned */
-    if (data == NULL || !WORD_ALIGNED(data)) {
+    if (data == NULL) {
         return ESP_LOADER_ERROR_INVALID_PARAM;
     }
-
-#ifdef SERIAL_FLASHER_DEBUG_TRACE
-    serial_debug_print(data, size, true);
-#endif
 
     spi_transaction_t transaction = {
         .tx_buffer = data,
@@ -166,8 +160,8 @@ esp_loader_error_t loader_port_write(const uint8_t *data, const uint16_t size, c
     esp_err_t err = spi_device_transmit(s_device_h, &transaction);
 
     if (err == ESP_OK) {
-#ifdef SERIAL_FLASHER_DEBUG_TRACE
-        serial_debug_print(data, size, false);
+#if SERIAL_FLASHER_DEBUG_TRACE
+        serial_debug_print(data, size, true);
 #endif
         return ESP_LOADER_SUCCESS;
     } else if (err == ESP_ERR_TIMEOUT) {
@@ -182,15 +176,10 @@ esp_loader_error_t loader_port_read(uint8_t *data, const uint16_t size, const ui
 {
     (void) timeout;
 
-    /* Due to the fact that the SPI driver uses DMA for larger transfers,
-       and the DMA requirements, the buffer must be word aligned */
+    /* The rx data buffer must be aligned to 32 bits due to DMA requirements */
     if (data == NULL || !WORD_ALIGNED(data)) {
         return ESP_LOADER_ERROR_INVALID_PARAM;
     }
-
-#ifdef SERIAL_FLASHER_DEBUG_TRACE
-    serial_debug_print(data, size, true);
-#endif
 
     spi_transaction_t transaction = {
         .tx_buffer = NULL,
@@ -201,7 +190,7 @@ esp_loader_error_t loader_port_read(uint8_t *data, const uint16_t size, const ui
     esp_err_t err = spi_device_transmit(s_device_h, &transaction);
 
     if (err == ESP_OK) {
-#ifdef SERIAL_FLASHER_DEBUG_TRACE
+#if SERIAL_FLASHER_DEBUG_TRACE
         serial_debug_print(data, size, false);
 #endif
         return ESP_LOADER_SUCCESS;

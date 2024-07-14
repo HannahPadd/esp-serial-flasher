@@ -6,23 +6,90 @@ set(srcs
     src/esp_loader.c
     src/protocol_common.c
 )
+set(defs)
+
+# Regular CMake builds are expected to set OPTION_NAME, while ESP-IDF's Kconfig system sets
+# CONFIG_OPTION_NAME.
+# This macro handles these differences and also a default value if neither is set
+macro(add_option option_name default_value)
+    if (DEFINED CONFIG_${option_name})
+        # Handle Kconfig booleans in a special manner
+        if (CONFIG_${option_name} STREQUAL "")
+            list(APPEND defs ${option_name}=false)
+        elseif(CONFIG_${option_name} STREQUAL "y")
+            list(APPEND defs ${option_name}=true)
+        else()
+            list(APPEND defs ${option_name}=${CONFIG_${option_name}})
+        endif()
+    elseif (DEFINED ${option_name})
+        list(APPEND defs ${option_name}=${${option_name}})
+    else()
+        list(APPEND defs ${option_name}=${default_value})
+    endif()
+endmacro()
+
+add_option(SERIAL_FLASHER_DEBUG_TRACE false)
+add_option(SERIAL_FLASHER_RESET_HOLD_TIME_MS 100)
+add_option(SERIAL_FLASHER_BOOT_HOLD_TIME_MS 50)
+add_option(SERIAL_FLASHER_WRITE_BLOCK_RETRIES 3)
+
+
+# Enforce default interface for non-ESP ports.
+# This doesn't need to be done for the ESP port as the Kconfig system handles the default.
+if (NOT DEFINED ESP_PLATFORM AND
+    NOT DEFINED SERIAL_FLASHER_INTERFACE_UART AND
+    NOT DEFINED SERIAL_FLASHER_INTERFACE_SPI AND
+    NOT DEFINED SERIAL_FLASHER_INTERFACE_USB)
+
+    set(SERIAL_FLASHER_INTERFACE_UART true)
+endif()
+
+if (DEFINED SERIAL_FLASHER_INTERFACE_UART OR CONFIG_SERIAL_FLASHER_INTERFACE_UART STREQUAL "y")
+    list(APPEND srcs
+        src/esp_stubs.c
+        src/protocol_uart.c
+        src/slip.c
+    )
+    list(APPEND defs
+        SERIAL_FLASHER_INTERFACE_UART
+    )
+    if (DEFINED MD5_ENABLED OR CONFIG_SERIAL_FLASHER_MD5_ENABLED)
+        list(APPEND defs MD5_ENABLED=1)
+    endif()
+
+elseif(DEFINED SERIAL_FLASHER_INTERFACE_USB OR CONFIG_SERIAL_FLASHER_INTERFACE_USB STREQUAL "y")
+    list(APPEND srcs
+        src/esp_stubs.c
+        src/protocol_uart.c
+        src/slip.c
+    )
+    list(APPEND defs
+        SERIAL_FLASHER_INTERFACE_USB
+    )
+    if (DEFINED MD5_ENABLED OR CONFIG_SERIAL_FLASHER_MD5_ENABLED)
+        list(APPEND defs MD5_ENABLED=1)
+    endif()
+
+elseif(DEFINED SERIAL_FLASHER_INTERFACE_SPI OR CONFIG_SERIAL_FLASHER_INTERFACE_SPI STREQUAL "y")
+    list(APPEND srcs
+        src/protocol_spi.c
+    )
+    list(APPEND defs
+        SERIAL_FLASHER_INTERFACE_SPI
+    )
+endif()
 
 if (DEFINED ESP_PLATFORM)
     if (${CONFIG_SERIAL_FLASHER_INTERFACE_UART})
         list(APPEND srcs
-            src/protocol_uart.c
-            src/slip.c
             port/esp32_port.c
         )
     elseif (${CONFIG_SERIAL_FLASHER_INTERFACE_SPI})
         list(APPEND srcs
-            src/protocol_spi.c
             port/esp32_spi_port.c
         )
     elseif (${CONFIG_SERIAL_FLASHER_INTERFACE_USB})
         list(APPEND srcs
-            src/protocol_uart.c
-            src/slip.c
             port/esp32_usb_cdc_acm_port.c
         )
     endif()
@@ -41,19 +108,6 @@ if (DEFINED ESP_PLATFORM)
     component_compile_options(-Wstrict-prototypes)
 
 else()
-    if (NOT DEFINED SERIAL_FLASHER_INTERFACE_UART AND NOT DEFINED SERIAL_FLASHER_INTERFACE_SPI)
-        set(SERIAL_FLASHER_INTERFACE_UART true)
-    endif()
-
-    if (DEFINED SERIAL_FLASHER_INTERFACE_UART)
-        list(APPEND srcs
-            src/protocol_uart.c
-            src/slip.c
-        )
-    elseif (DEFINED SERIAL_FLASHER_INTERFACE_SPI)
-        list(APPEND srcs src/protocol_spi.c)
-    endif()
-
     # Create traditional CMake target
     add_library(flasher ${srcs})
 
@@ -88,77 +142,17 @@ else()
 
 endif()
 
-if (DEFINED SERIAL_FLASHER_INTERFACE_UART OR CONFIG_SERIAL_FLASHER_INTERFACE_UART STREQUAL "y")
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_INTERFACE_UART
-    )
-    if (DEFINED MD5_ENABLED OR CONFIG_SERIAL_FLASHER_MD5_ENABLED)
-        target_compile_definitions(${target} PUBLIC MD5_ENABLED=1)
-    endif()
-elseif (DEFINED SERIAL_FLASHER_INTERFACE_SPI OR CONFIG_SERIAL_FLASHER_INTERFACE_SPI STREQUAL "y")
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_INTERFACE_SPI
-    )
-elseif (DEFINED SERIAL_FLASHER_INTERFACE_USB OR CONFIG_SERIAL_FLASHER_INTERFACE_USB STREQUAL "y")
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_INTERFACE_USB
-    )
-endif()
+target_compile_definitions(${target} PUBLIC ${defs})
 
-if(DEFINED SERIAL_FLASHER_DEBUG_TRACE OR CONFIG_SERIAL_FLASHER_DEBUG_TRACE)
-    target_compile_definitions(${target} PUBLIC SERIAL_FLASHER_DEBUG_TRACE)
-endif()
-
-if (DEFINED CONFIG_SERIAL_FLASHER_RESET_HOLD_TIME_MS)
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_RESET_HOLD_TIME_MS=${CONFIG_SERIAL_FLASHER_RESET_HOLD_TIME_MS}
-    )
-elseif (DEFINED SERIAL_FLASHER_RESET_HOLD_TIME_MS)
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_RESET_HOLD_TIME_MS=${SERIAL_FLASHER_RESET_HOLD_TIME_MS}
-    )
-else()
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_RESET_HOLD_TIME_MS=100
-    )
-endif()
-
-if (DEFINED CONFIG_SERIAL_FLASHER_BOOT_HOLD_TIME_MS)
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_BOOT_HOLD_TIME_MS=${CONFIG_SERIAL_FLASHER_BOOT_HOLD_TIME_MS}
-    )
-elseif (DEFINED SERIAL_FLASHER_BOOT_HOLD_TIME_MS)
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_BOOT_HOLD_TIME_MS=${SERIAL_FLASHER_BOOT_HOLD_TIME_MS}
-    )
-else()
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_BOOT_HOLD_TIME_MS=50
-    )
-endif()
-
-if (DEFINED CONFIG_SERIAL_FLASHER_WRITE_BLOCK_RETRIES)
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_WRITE_BLOCK_RETRIES=${CONFIG_SERIAL_FLASHER_WRITE_BLOCK_RETRIES}
-    )
-elseif (DEFINED SERIAL_FLASHER_WRITE_BLOCK_RETRIES)
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_WRITE_BLOCK_RETRIES=${SERIAL_FLASHER_WRITE_BLOCK_RETRIES}
-    )
-else()
-    target_compile_definitions(${target}
-    PUBLIC
-        SERIAL_FLASHER_WRITE_BLOCK_RETRIES=3
+# This segment pulls the flasher stubs at a specified version at wish, and generates the
+# esp_stubs.c/h files, overwriting the library provided ones.
+# It is also possible to override stub generation to use a custom url or a local folder.
+# Please check if the license under which the custom stub sources are released fits your usecase.
+if (DEFINED SERIAL_FLASHER_STUB_PULL_VERSION OR DEFINED SERIAL_FLASHER_STUB_PULL_OVERRIDE_PATH)
+    include(cmake/serial_flasher_pull_stubs.cmake)
+    serial_flasher_pull_stubs(
+        VERSION ${SERIAL_FLASHER_STUB_PULL_VERSION}
+        SOURCE ${SERIAL_FLASHER_STUB_PULL_SOURCE}
+        PATH_OVERRIDE ${SERIAL_FLASHER_STUB_PULL_OVERRIDE_PATH}
     )
 endif()
