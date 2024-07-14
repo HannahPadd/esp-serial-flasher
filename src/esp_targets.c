@@ -153,7 +153,7 @@ static const esp_target_t esp_target[ESP_MAX_CHIP] = {
     },
 
     // Reserved for future use
-    {},
+    // {},
 
     // ESP32H2
     {

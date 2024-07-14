@@ -46,7 +46,11 @@ _Static_assert(ESP_MAX_CHIP == 9, "Stub order matches target_chip_t enumeration"
 
 const esp_stub_t esp_stub[ESP_MAX_CHIP] = {
     // placeholder
-    {},
+    {
+        .header = {
+            .entrypoint = 0,
+        }
+    },
 
     // esp32.json
     {
@@ -144,7 +148,11 @@ const esp_stub_t esp_stub[ESP_MAX_CHIP] = {
     },
 
     // placeholder
-    {},
+    {
+        .header = {
+            .entrypoint = 0,
+        },
+    },
 
     // esp32h2.json
     {
