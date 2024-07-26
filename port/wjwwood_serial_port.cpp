@@ -62,8 +62,8 @@ void setTimeout(uint32_t timeout)
         loader_port_debug_print("Port not open\n");
         return;
     }
-
-    serial_port->setTimeout(serial::Timeout::simpleTimeout(timeout));
+    serial::Timeout timeout_obj = serial::Timeout::simpleTimeout(timeout);
+    serial_port->setTimeout(timeout_obj);
     serial_config.timeout = timeout;
 }
 
@@ -191,12 +191,12 @@ void loader_port_delay_ms(uint32_t ms)
 
 void loader_port_start_timer(uint32_t ms)
 {
-    serial_timer = high_resolution_clock::now() + (ms * 1ms);
-}
+    serial_timer = std::chrono::steady_clock::now() + milliseconds(ms);
+    }
 
 uint32_t loader_port_remaining_time(void)
 {
-    auto time_now = high_resolution_clock::now();
+    auto time_now = std::chrono::steady_clock::now();
     int32_t remaining = (duration_cast<milliseconds>(serial_timer - time_now)).count();
     return (remaining > 0) ? (uint32_t)remaining : 0;
 }
